@@ -87,15 +87,9 @@ def process_documents():
                         ids=[f"{filename}-{i}"]
                     )
 
-def ask_ai_fast(user_input):
-    """
-    Versi super cepat tanpa overhead agen CrewAI (ReAct loop). 
-    Hanya butuh 1x Groq request.
-    """
-    # 1. Cari dokumen langsung ke ChromaDB (mirip tool)
-    query_expanded = user_input.replace("DKV", "pengertian definisi Desain Komunikasi Visual")
+def ask_ai_by_docs(user_input):
     results = collection.query(
-        query_texts=[query_expanded.strip()],
+        query_texts=[user_input.strip()],
         n_results=8
     )
     
@@ -108,9 +102,7 @@ def ask_ai_fast(user_input):
         if formatted_results:
             context_text = "\n\n---\n\n".join(formatted_results)
             
-    # 2. Panggil LLM sekali saja via Groq API
     prompt = f"""Tugas kamu: Jawab pertanyaan berikut HANYA menggunakan info dari dokumen teks di bawah. 
-Catatan: 'DKV' adalah akronim dari 'Desain Komunikasi Visual'.
 Jika info tidak ada di teks, jawab 'Maaf, info tidak ditemukan'.
 Sertakan juga nama file sumber dari label [File: ...]. DILARANG NGARANG.
 
@@ -129,6 +121,22 @@ Teks Dokumen Referensi:
     )
     return completion.choices[0].message.content
 
+def ask_ai_by_internet(user_input):
+    prompt = f"""Tugas kamu: Jawab pertanyaan berikut HANYA menggunakan info dari internet. 
+Jika info tidak ada di internet, jawab 'Maaf, info tidak ditemukan'.
+Sertakan juga url sumber [URL: ...]. DILARANG NGARANG.
+
+Pertanyaan: '{user_input}'
+"""
+    completion = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[
+            {"role": "system", "content": "Anda adalah asisten cerdas yang dapat menjawab akurat berdasarkan internet."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.1
+    )
+    return completion.choices[0].message.content
 
 # Inisialisasi dokumen saat import agar database siap
 if collection is None:
