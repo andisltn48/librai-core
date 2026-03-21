@@ -52,46 +52,58 @@ client = Groq(api_key=groq_api_key)
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
 collection = None
 
+def add_to_chroma(filepath, filename):
+    """Memproses satu file PDF dan memasukkannya ke ChromaDB."""
+    if not os.path.exists(filepath):
+        return
+        
+    doc = fitz.open(filepath)
+    text = ""
+    for page in doc:
+        text += page.get_text()
+        
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=500, 
+        chunk_overlap=100,
+        separators=["\n\n", "\n", ".", " "]
+    )
+    chunks = text_splitter.split_text(text)
+    
+    for i, chunk in enumerate(chunks):
+        collection.add(
+            documents=[chunk],
+            metadatas=[{"source": filename}],
+            ids=[f"{filename}-{i}"]
+        )
+
+def delete_from_chroma(filename):
+    """Menghapus semua chunk yang berasal dari file tertentu."""
+    collection.delete(where={"source": filename})
+
 def process_documents():
     global collection
     collection = chroma_client.get_or_create_collection(name="librai")
     
-    # Perbarui data setiap kali server restart untuk memastikan dokumen terbaru masuk
-    try:
-        chroma_client.delete_collection(name="librai")
-        collection = chroma_client.create_collection(name="librai")
-    except:
-        collection = chroma_client.get_or_create_collection(name="librai")
-    
+    # Jangan hapus koleksi setiap saat, cukup tambahkan yang belum ada
+    # Untuk demo ini, kita biarkan saja dlu
     doc_dir = "./documents"
     if os.path.exists(doc_dir):
         for filename in os.listdir(doc_dir):
             if filename.endswith(".pdf"):
                 filepath = os.path.join(doc_dir, filename)
-                doc = fitz.open(filepath)
-                text = ""
-                for page in doc:
-                    text += page.get_text()
-                    
-                text_splitter = RecursiveCharacterTextSplitter(
-                    chunk_size=500, 
-                    chunk_overlap=100,
-                    separators=["\n\n", "\n", ".", " "]
-                )
-                chunks = text_splitter.split_text(text)
-                
-                for i, chunk in enumerate(chunks):
-                    collection.add(
-                        documents=[chunk],
-                        metadatas=[{"source": filename}],
-                        ids=[f"{filename}-{i}"]
-                    )
+                add_to_chroma(filepath, filename)
 
-def ask_ai_by_docs(user_input):
-    results = collection.query(
-        query_texts=[user_input.strip()],
-        n_results=8
-    )
+def ask_ai_by_docs(user_input, allowed_filenames=None):
+    # Filter ChromaDB agar hanya mencari di file milik user tersebut
+    query_params = {
+        "query_texts": [user_input.strip()],
+        "n_results": 8
+    }
+    
+    if allowed_filenames:
+        query_params["where"] = {"source": {"$in": allowed_filenames}}
+    
+    results = collection.query(**query_params)
     
     context_text = "DATA_NOT_FOUND"
     if results['documents'] and results['documents'][0]:
