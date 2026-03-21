@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from app.core_ai import ask_ai_by_docs, ask_ai_by_internet
-from app.upload import upload_file
+from app.file import upload_file, get_all_files
 
 api_bp = Blueprint('api', __name__)
 
@@ -38,6 +38,14 @@ def ask_by_internet():
 def upload():
     try:
         result = upload_file(request)
+        return result
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/files', methods=['GET'])
+def list_files():
+    try:
+        result = get_all_files()
         return result
     except Exception as e:
         return jsonify({'error': str(e)}), 500
